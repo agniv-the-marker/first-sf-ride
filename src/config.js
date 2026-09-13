@@ -1,6 +1,3 @@
-export const GPX_URL = '../calm_lil_wednesday_excursion.gpx';
-export const GOOGLE_MAPS_API_KEY = 'AIzaSyD1hB5UJh2atUapGHKs72brDaANeUIbzn0';
-
 // Capture metadata does not include reliable GPS positions, so this is deliberately easy to edit.
 export const MEDIA_MANIFEST = [
   { id: 'img-01', src: 'peak-bikeride/peak-bikeride/IMG_6453.JPG', at: 0.04, order: 0, span: 2 },
@@ -13,9 +10,10 @@ export const MEDIA_MANIFEST = [
 ];
 
 export const CITY_LABELS = [
-  { name: 'Woodside', lat: 37.429, lon: -122.253 },
-  { name: 'Half Moon Bay', lat: 37.463, lon: -122.429 },
-  { name: 'Montara', lat: 37.543, lon: -122.517 },
-  { name: 'Daly City', lat: 37.690, lon: -122.461 },
-  { name: 'San Francisco', lat: 37.782, lon: -122.394 }
+  { name: 'stanford', lat: 37.406132, lon: -122.126204, major: true, anchor: 'left' },
+  { name: 'woodside', lat: 37.4292, lon: -122.2539, anchor: 'right' },
+  { name: 'half moon bay', lat: 37.4636, lon: -122.4286, anchor: 'left' },
+  { name: 'montara', lat: 37.5429, lon: -122.5161, anchor: 'left' },
+  { name: 'pacifica', lat: 37.6138, lon: -122.4869, anchor: 'right' },
+  { name: 'san francisco', lat: 37.782112, lon: -122.393594, major: true, anchor: 'right' }
 ];
