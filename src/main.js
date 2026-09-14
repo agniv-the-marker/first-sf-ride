@@ -1,5 +1,5 @@
 import { CITY_LABELS, HIDE_UNDATED_MEDIA } from './config.js';
-import { formatDistance, formatElevation, formatTime, pointAtDistance, pointAtProgress, rideHour, stateAtTime, projectBounds, sampleByDistance, toPath } from './gpx.js';
+import { formatDistance, formatElevation, formatTime, pointAtDistance, pointAtProgress, rideHour, stateAtTime, projectBounds, sampleByDistance } from './gpx.js';
 import { createRoute } from './route.js';
 import { createMediaController } from './media.js';
 import { createMediaLoop } from './media-loop.js';
@@ -77,9 +77,16 @@ async function start() {
   mapSlot.append(mapButton);
   document.querySelector('.byline').after(mapSlot);
   const routeStage = document.querySelector('.route-stage');
-  const stageBounds = routeStage.getBoundingClientRect();
-  const mapHeight = Math.max(105, Math.min(220, 100 * stageBounds.height / Math.max(1, stageBounds.width)));
-  const projection = projectBounds(samples, { width: 100, height: mapHeight, padding: 7 });
+  // The viewBox has to match the stage's aspect exactly. Clamping the height made
+  // a 0.95:1 viewBox sit inside a 3.9:1 stage on a phone held sideways, so the map
+  // was letterboxed into the middle third while the labels — positioned as a
+  // percentage of the stage — spread across the whole of it, well off their dots.
+  const measureProjection = () => {
+    const box = routeStage.getBoundingClientRect();
+    const height = Math.max(20, Math.min(400, 100 * box.height / Math.max(1, box.width)));
+    return projectBounds(samples, { width: 100, height, padding: Math.max(2.5, Math.min(7, height * 0.07)) });
+  };
+  let projection = measureProjection();
   const water = createWater({ host: routeStage, svg: document.querySelector('.route-map'), projection });
   const MARK_STEP_MI = 5;
   const COPY_GAP = 12;
@@ -89,7 +96,6 @@ async function start() {
     svg: document.querySelector('.route-map'),
     dot: document.querySelector('[data-route-dot]'),
     marker: document.querySelector('[data-route-marker]'),
-    pathData: toPath(samples, projection),
     cities: CITY_LABELS,
     samples,
     projection,
@@ -139,6 +145,22 @@ async function start() {
   const scheduleScrollSync = () => {
     if (!scrollFrame) scrollFrame = requestAnimationFrame(syncRouteToScroll);
   };
+  let stageShape = '';
+  const reprojectIfReshaped = () => {
+    const box = routeStage.getBoundingClientRect();
+    const shape = `${Math.round(box.width)}x${Math.round(box.height)}`;
+    if (shape === stageShape || box.width < 1 || box.height < 1) return;
+    stageShape = shape;
+    projection = measureProjection();
+    route.reproject(projection);
+    water.setProjection(projection);
+  };
+  let reprojectTimer = 0;
+  addEventListener('resize', () => {
+    clearTimeout(reprojectTimer);
+    reprojectTimer = setTimeout(reprojectIfReshaped, 160);
+  }, { passive: true });
+
   // Pinning is a class toggle off one rect: cheap enough to do on the scroll event
   // itself, so the bar never lags a frame behind the reader.
   addEventListener('scroll', () => { syncPin(); scheduleScrollSync(); }, { passive: true });
@@ -411,6 +433,7 @@ async function start() {
     closeViewer();
     document.body.classList.add('is-mapping');
     mapButton.setAttribute('aria-expanded', 'true');
+    reprojectIfReshaped();
     syncWater();
     routeClose.focus({ preventScroll: true });
   };
@@ -482,7 +505,9 @@ async function start() {
   // The panel opens with a 10px lift, so the canvas box is still moving when water
   // starts. Re-measure once it has settled or every hit test is 10px out.
   routePanel.addEventListener('transitionend', event => {
-    if (event.propertyName === 'transform' && document.body.classList.contains('is-mapping')) water.refresh();
+    if (event.propertyName !== 'transform' || !document.body.classList.contains('is-mapping')) return;
+    reprojectIfReshaped();
+    water.refresh();
   });
 
   viewer.querySelector('.viewer-close').addEventListener('click', closeViewer);
@@ -548,6 +573,9 @@ async function start() {
   syncScrub();
   syncWater();
   syncPin();
+  // Everything is in the DOM now — including the map's close button, which takes a
+  // slice of the stage — so this is the first point the stage has its final shape.
+  reprojectIfReshaped();
   syncRouteToScroll();
 }
 

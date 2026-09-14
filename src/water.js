@@ -72,6 +72,12 @@ const MASK_BYTES = (() => {
 // The mask is stored in Web Mercator, the same space projectBounds() scales
 // linearly into SVG units — so this is just that map run backwards.
 function isWater(mercX, mercY) {
+  // The mask only covers the ride's neighbourhood, but the view can be far wider
+  // than that — a phone held sideways spans about three degrees of longitude. West
+  // of the mask is open Pacific all the way out, east of it is the Central Valley,
+  // and both of those are certain enough to answer without baking them in.
+  if (mercX < WATER_MASK.minX) return true;
+  if (mercX > WATER_MASK.maxX) return false;
   // Clamped rather than rejected: if the stage ever shows a sliver beyond the
   // baked bounds, the nearest real cell is a better guess than "land".
   const x = clamp(Math.round((mercX - WATER_MASK.minX) / (WATER_MASK.maxX - WATER_MASK.minX) * (WATER_MASK.width - 1)), 0, WATER_MASK.width - 1);
@@ -226,6 +232,7 @@ export function waterColorAt(hour) {
 }
 
 export function createWater({ host = '.route-stage', svg, projection } = {}) {
+  // Reassigned when the stage changes shape, so the mask keeps lining up.
   const stage = typeof host === 'string' ? document.querySelector(host) : host;
   const map = typeof svg === 'string' ? document.querySelector(svg) : svg;
   if (!stage || !map || !projection) return { refresh: () => {}, destroy: () => {} };
@@ -454,6 +461,7 @@ export function createWater({ host = '.route-stage', svg, projection } = {}) {
 
   return {
     refresh: layout,
+    setProjection: next => { projection = next; if (running || reduced.matches) layout(); },
     setActive: value => { if (value === allowed) return; allowed = value; sync(); },
     // Fractional hour in the ride's own timezone, so the colour slides rather than
     // steps and dusk lands when it actually did.

@@ -20,15 +20,31 @@ function eventPoint(event, svg) {
   return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
 }
 
-export function createRoute({ svg, dot, marker, pathData, onProgress, cities, samples, projection, getPoint, canScrub = () => true }) {
-  svg.setAttribute('viewBox', `0 0 ${projection.width} ${projection.height}`);
+export function createRoute({ svg, dot, marker, onProgress, cities, samples, projection, getPoint, canScrub = () => true }) {
   const clip = svg.querySelector('[data-map-clip]');
-  clip.setAttribute('width', projection.width);
-  clip.setAttribute('height', projection.height);
-  drawRoadMap(svg, projection);
-  document.querySelector('#routeLoading')?.remove();
 
-  svg.querySelectorAll('[data-route-path], [data-route-progress]').forEach(path => path.setAttribute('d', pathData));
+  // Everything geometric is re-runnable, because the stage changes shape when a
+  // phone is rotated and a projection built for one aspect ratio is wrong for the
+  // other — the labels would sit well off their dots.
+  // The marker is drawn in user units, so it would double in size when the viewBox
+  // gets short and wide. Scale it against a reference so it stays put in pixels.
+  const REFERENCE_PX_PER_UNIT = 4.2;
+  let markerScale = 1;
+
+  const applyProjection = geometry => {
+    projection = geometry;
+    const pxPerUnit = svg.getBoundingClientRect().width / projection.width;
+    markerScale = pxPerUnit > 0 ? Math.max(0.35, Math.min(2, REFERENCE_PX_PER_UNIT / pxPerUnit)) : 1;
+    svg.setAttribute('viewBox', `0 0 ${projection.width} ${projection.height}`);
+    clip.setAttribute('width', projection.width);
+    clip.setAttribute('height', projection.height);
+    drawRoadMap(svg, projection);
+    const drawn = toPath(samples, projection);
+    svg.querySelectorAll('[data-route-path], [data-route-progress]').forEach(path => path.setAttribute('d', drawn));
+  };
+
+  applyProjection(projection);
+  document.querySelector('#routeLoading')?.remove();
   const routeLine = svg.querySelector('.route-line');
   const progressLine = svg.querySelector('[data-route-progress]');
   const routeLength = routeLine.getTotalLength();
@@ -60,20 +76,23 @@ export function createRoute({ svg, dot, marker, pathData, onProgress, cities, sa
   const labels = document.querySelector('#cityLabels');
   const cityMarkers = [];
   labels.innerHTML = '';
+  const placeLabel = (label, city) => {
+    const position = projectPoint(city, projection);
+    label.style.left = `${position.x / projection.width * 100}%`;
+    label.style.top = `${position.y / projection.height * 100}%`;
+  };
   cities.forEach(city => {
     const nearest = samples.reduce((best, candidate) => {
       const distance = (candidate.lat - city.lat) ** 2 + (candidate.lon - city.lon) ** 2;
       return distance < best.distance ? { distance, point: candidate } : best;
     }, { distance: Infinity, point: samples[0] });
-    const position = projectPoint(city, projection);
     const label = document.createElement('span');
     label.className = `city-label${city.major ? ' major' : ''}${city.stack ? ' stacked' : ''}`;
     label.textContent = city.name;
-    label.style.left = `${position.x / projection.width * 100}%`;
-    label.style.top = `${position.y / projection.height * 100}%`;
     label.dataset.anchor = city.anchor || 'right';
+    placeLabel(label, city);
     labels.append(label);
-    cityMarkers.push({ label, progress: nearest.point.progress });
+    cityMarkers.push({ label, city, progress: nearest.point.progress });
   });
 
   let progress = 0;
@@ -85,7 +104,7 @@ export function createRoute({ svg, dot, marker, pathData, onProgress, cities, sa
     const position = projectPoint(ridePoint, projection);
     dot.setAttribute('cx', position.x);
     dot.setAttribute('cy', position.y);
-    marker.setAttribute('transform', `translate(${position.x.toFixed(3)} ${position.y.toFixed(3)}) rotate(${headingAt(progress).toFixed(1)})`);
+    marker.setAttribute('transform', `translate(${position.x.toFixed(3)} ${position.y.toFixed(3)}) rotate(${headingAt(progress).toFixed(1)}) scale(${markerScale.toFixed(3)})`);
     dot.setAttribute('aria-valuenow', Math.round(progress * 100));
     dot.setAttribute('aria-valuetext', `${Math.round(progress * 100)} percent of the ride`);
     progressLine.setAttribute('stroke-dasharray', `${Math.max(0.001, progress)} 1`);
@@ -129,5 +148,15 @@ export function createRoute({ svg, dot, marker, pathData, onProgress, cities, sa
     set(event.key === 'Home' ? 0 : event.key === 'End' ? 1 : progress + delta, true);
   });
 
-  return { setProgress: set, getProgress: () => progress };
+  return {
+    setProgress: set,
+    getProgress: () => progress,
+    // Rebuild every piece of geometry against a projection measured from the
+    // stage's new shape, then put the marker back where it was.
+    reproject: geometry => {
+      applyProjection(geometry);
+      cityMarkers.forEach(marker => placeLabel(marker.label, marker.city));
+      set(progress);
+    }
+  };
 }
