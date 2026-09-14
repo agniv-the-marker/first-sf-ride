@@ -1,11 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap');
 
 :root {
-  --bg: #111210;
+  --bg: #191b18;
   --ink: #eeeae0;
   --muted: #858a82;
   --rust: #d9684f;
-  --blue: #82a8a4;
+  --teal: #82a8a4;
   --serif: 'Newsreader', Georgia, serif;
   --mono: 'DM Mono', ui-monospace, monospace;
 }
@@ -32,7 +32,7 @@ body {
   inset: 0;
   z-index: 30;
   pointer-events: none;
-  opacity: .08;
+  opacity: .34;
   mix-blend-mode: soft-light;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='190' height='190' viewBox='0 0 190 190'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.46'/%3E%3C/svg%3E");
 }
@@ -100,7 +100,18 @@ body {
   border-bottom: 1px solid color-mix(in srgb, var(--muted) 22%, transparent);
 }
 
+/* Water under the map. Pointer-transparent, so scrubbing the route still works. */
+.route-stage .water {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: .95;
+}
+
 .route-map {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
@@ -155,33 +166,49 @@ body {
   opacity: .9;
 }
 
+/* No SVG filter here. The progress line and the marker move on every scroll frame,
+   so the whole map repaints; a turbulence + displacement pass over 45,000 road
+   points at that rate is what made scrolling flicker. The footer's lane keeps its
+   grain because nothing there repaints. */
 .route-line {
-  stroke: var(--blue);
+  stroke: var(--teal);
   stroke-width: 1.35;
   opacity: .75;
 }
 
 .route-progress {
   stroke: var(--rust);
-  stroke-width: 2.2;
+  stroke-width: 1.8;
 }
 
-.route-dot-halo {
-  fill: color-mix(in srgb, var(--rust) 24%, transparent);
-  stroke: none;
-  pointer-events: none;
-}
-
+/* The dot is now an invisible hit/focus target; the visible marker is the group below. */
 .route-dot {
-  fill: var(--rust);
-  stroke: var(--bg);
-  stroke-width: 1.15;
-  vector-effect: non-scaling-stroke;
+  fill: none;
+  stroke: none;
+  pointer-events: all;
   cursor: grab;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--rust) 65%, transparent));
 }
 
 .route-dot:active { cursor: grabbing; }
+.route-dot:focus { outline: none; }
+
+.route-dot:focus-visible + .route-marker .route-arrow {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.route-marker {
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--rust) 45%, transparent));
+}
+
+.route-arrow {
+  fill: var(--rust);
+  stroke: var(--bg);
+  stroke-width: .35;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
 
 .city-labels {
   position: absolute;
@@ -199,6 +226,19 @@ body {
   white-space: nowrap;
   transition: opacity .35s ease, color .35s ease;
 }
+
+/* Long names get their own lines instead of running across the map, and drop clear
+   of the route so the stack does not sit on top of it. */
+.city-label.stacked {
+  width: min-content;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+/* A stacked name sits above its dot: below it, the three lines run straight into
+   Tunitas Creek's label a little further down the coast. */
+.city-label.stacked[data-anchor="right"] { transform: translate(8px, calc(-50% - 42px)); }
+.city-label.stacked[data-anchor="left"] { transform: translate(calc(-100% - 8px), calc(-50% - 42px)); }
 
 .city-label[data-anchor="right"] { transform: translate(8px, -50%); }
 .city-label[data-anchor="left"] { transform: translate(calc(-100% - 8px), -50%); }
@@ -232,7 +272,7 @@ body {
 
 .ride-status {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   height: 40px;
   align-items: center;
   gap: 14px;
@@ -253,7 +293,12 @@ body {
 
 .essay-inner {
   max-width: 900px;
-  padding: 13vh 22px 10vh 0;
+  /* Top: the title's ink starts level with the top of the map stage beside it. The
+     box has to sit 5px lower than the stage to manage that — with line-height .9
+     the ascenders and the dots on the i's overhang the line box, and aligning the
+     boxes left those poking up above the map's top rule. Bottom: scrolling to the
+     end leaves the footer's last line level with the map's status row. */
+  padding: 47px 22px 15px 0;
 }
 
 .essay h1 {
@@ -302,27 +347,46 @@ body {
   transition: color .8s ease;
 }
 
-.story-section .shubham { color: var(--blue); }
+.story-section .shubham { color: var(--teal); }
 
-.story-section:first-child p:first-of-type::first-letter {
+/* A two-colour screen print that missed its register: the letter is struck three
+   times — a cool ghost just off the mark, the ink itself, and the page's own film
+   grain trapped inside the glyph. */
+.drop-cap {
+  position: relative;
   float: left;
-  margin: .08em .08em 0 0;
+  margin: .04em .085em -.05em 0;
   color: var(--rust);
-  font-size: 3.15em;
+  font-size: 4.4em;
   font-weight: 500;
-  line-height: .78;
+  line-height: .72;
+  letter-spacing: -.02em;
 }
 
-.editable { outline: 0; }
-
-.editing .editable,
-.editing h1 {
-  outline: 1px dashed color-mix(in srgb, var(--rust) 60%, transparent);
-  outline-offset: 8px;
+.drop-cap::before,
+.drop-cap::after {
+  content: attr(data-letter);
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
 }
 
-.editing .editable:focus,
-.editing h1:focus { outline-style: solid; }
+.drop-cap::before {
+  color: var(--teal);
+  opacity: .55;
+  mix-blend-mode: screen;
+  transform: translate(-.045em, .025em);
+}
+
+.drop-cap::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)' opacity='.85'/%3E%3C/svg%3E");
+  color: transparent;
+  mix-blend-mode: overlay;
+  opacity: .9;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
 
 .essay .video-card {
   position: relative;
@@ -337,7 +401,6 @@ body {
   height: auto;
   transform: rotate(var(--media-rotation, 0deg));
   transform-origin: center;
-  filter: saturate(.78) contrast(.96);
 }
 
 .video-controls .video-pause-toggle,
@@ -357,27 +420,51 @@ body {
 
 .essay-footer {
   margin-top: 4vh;
-  padding-bottom: 7vh;
 }
 
 .essay-footer svg {
   display: block;
   width: 100%;
-  height: 30px;
+  height: auto;
   overflow: visible;
 }
 
-.essay-footer path {
+.essay-footer .lane-edges,
+.essay-footer .lane-dashes { filter: url(#laneGrain); }
+
+.essay-footer .lane-edges path,
+.essay-footer .lane-dashes path {
   fill: none;
-  stroke: var(--rust);
-  stroke-width: 1.5;
   stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.essay-footer .lane-edges path {
+  stroke: color-mix(in srgb, var(--muted) 72%, transparent);
+  stroke-width: 2.2;
+}
+
+.essay-footer .lane-dashes path {
+  stroke: var(--rust);
+  stroke-width: 2.6;
+  stroke-dasharray: 15 11;
+  opacity: .92;
 }
 
 .essay-footer div {
   display: flex;
+  align-items: baseline;
   gap: 22px;
-  margin-top: 18px;
+  margin-top: 20px;
+}
+
+.lane-note {
+  margin-right: auto;
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+  font: 500 9px/1 var(--mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
 }
 
 .essay-footer a {
@@ -389,10 +476,142 @@ body {
 .essay-footer a:hover { text-decoration: underline; }
 
 .media-panel {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   min-width: 0;
-  padding-top: 18px;
+  margin-right: 24px;
+  margin-left: -24px;
+  padding-top: 64px;
+  overflow: hidden;
+  contain: paint;
 }
 
+.media-panel.is-looping {
+  cursor: grab;
+  touch-action: none;
+}
+
+/* Fades at the top and bottom of the column. These used to be a mask-image on
+   .media-region, but masking a large transformed subtree forces it to re-rasterise
+   on every scroll frame; over a flat background two gradients look the same. */
+.media-panel.is-looping::before,
+.media-panel.is-looping::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  left: 0;
+  height: 54px;
+  pointer-events: none;
+}
+
+.media-panel.is-looping::before {
+  top: 0;
+  background: linear-gradient(to bottom, var(--bg) 20%, transparent);
+}
+
+.media-panel.is-looping::after {
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg) 20%, transparent);
+}
+
+/* The rail of labels down the left of the drifting column, and its brake. */
+/* The clip window. It never moves — the track inside it is what travels, exactly
+   as .media-panel clips the columns that slide within it. */
+.media-rail {
+  position: absolute;
+  z-index: 2;
+  top: 64px;
+  bottom: 0;
+  left: 0;
+  width: 74px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.media-rail-track {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  /* Must match .media-column's gap, or the rail wraps out of phase with the
+     photographs and slides away from them a little on every pass. */
+  gap: 12px;
+}
+
+.media-rail .media-loop-copy {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+}
+
+
+
+.rail-mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 74px;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font: 8px/1.4 var(--mono);
+  letter-spacing: .04em;
+}
+
+.rail-mark i {
+  display: block;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rail-mark em {
+  display: block;
+  font-style: normal;
+}
+
+/* The stretch of road you are currently scrolled to. */
+.rail-mark.is-current { color: var(--rust); }
+.rail-mark.is-current i { color: var(--rust); }
+.rail-mark.is-current::after { border-top-color: color-mix(in srgb, var(--rust) 60%, transparent); }
+
+.rail-mark::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 42px;
+  width: 24px;
+  border-top: 1px solid color-mix(in srgb, var(--muted) 26%, transparent);
+}
+
+.media-pause {
+  position: absolute;
+  z-index: 3;
+  bottom: 16px;
+  left: 0;
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  font: 9px/1 var(--mono);
+  letter-spacing: .06em;
+  pointer-events: auto;
+  text-transform: lowercase;
+  transition: color .3s ease, border-color .3s ease;
+}
+
+.media-pause:hover {
+  border-color: color-mix(in srgb, var(--rust) 55%, transparent);
+  color: var(--rust);
+}
+
+.media-panel:not(.is-looping) .media-rail,
+.media-panel:not(.is-looping) .media-pause { display: none; }
+
+.media-panel.is-dragging { cursor: grabbing; }
 .media-region {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -400,10 +619,31 @@ body {
   align-items: start;
 }
 
+.is-looping .media-region { padding-left: 78px; }
+
+
 .media-column {
   display: flex;
   min-width: 0;
   flex-direction: column;
+  gap: 12px;
+}
+
+.is-looping .media-column,
+.is-looping .media-rail-track {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Cards sit at their natural rhythm from the top; the copy's min-height supplies
+   the shared period and any leftover is a couple of pixels at the bottom. Anything
+   that redistributes the slack risks pushing content out of the box and onto the
+   next copy. */
+.media-loop-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  flex: 0 0 auto;
   gap: 12px;
 }
 
@@ -423,44 +663,136 @@ body {
   display: block;
   width: 100%;
   height: auto;
-  filter: saturate(.73) contrast(.95);
 }
 
-.media-bottom { display: none; }
+.media-card img { filter: saturate(.92) contrast(1.02); }
 
-.media-controls {
+/* The blown-up frame, on the right where the column is. No tint, no border, no
+   shadow — the page's own background, so it reads as the column making room for a
+   larger frame rather than a panel floating above it. Visibility rather than
+   `display`, so it can fade and so a closed viewer never hit-tests. */
+.media-viewer {
   position: fixed;
-  z-index: 45;
-  top: 45px;
-  right: 15px;
-  width: 310px;
-  max-height: calc(100vh - 60px);
-  overflow: auto;
-  padding: 15px;
-  background: #1d211d;
-  color: var(--ink);
-  font: 10px var(--mono);
+  /* Below .paper-noise (z-30) on purpose, so the film grain lies over the enlarged
+     frame exactly as it lies over the rest of the page. */
+  z-index: 20;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(46vw, 620px);
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 22px 26px;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 10px, 0);
+  transition: opacity .42s ease, transform .42s cubic-bezier(.2, .7, .3, 1), visibility .42s;
+  visibility: hidden;
 }
 
-.controls-title {
-  margin-bottom: 8px;
-  color: var(--rust);
+.media-viewer.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  visibility: visible;
+}
+
+/* The panel is the page's own colour, so its edge would otherwise slice the essay
+   mid-word. Same colour, just feathered, so the page runs out instead of being cut. */
+.media-viewer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -80px;
+  width: 80px;
+  background: linear-gradient(to right, transparent, var(--bg) 82%);
+  pointer-events: none;
+}
+
+/* Cross-fade when moving from one frame to the next. */
+.viewer-frame img,
+.viewer-meta {
+  transition: opacity .3s ease;
+}
+
+.media-viewer.is-swapping .viewer-frame img,
+.media-viewer.is-swapping .viewer-meta { opacity: 0; }
+
+/* The scale and the brake step out of the way while a frame is open. */
+.media-rail,
+.media-pause {
+  transition: opacity .35s ease;
+}
+
+body.is-viewing .media-rail,
+body.is-viewing .media-pause {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viewer-close {
+  align-self: flex-end;
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  padding: 5px 9px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: 9px/1 var(--mono);
+  letter-spacing: .06em;
+}
+
+.viewer-close:hover { border-color: color-mix(in srgb, var(--rust) 55%, transparent); color: var(--rust); }
+
+.viewer-frame {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+.viewer-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  filter: saturate(.92) contrast(1.02);
+  object-fit: contain;
+}
+
+.viewer-meta {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+
+.viewer-meta div { min-width: 0; }
+
+.viewer-meta dt {
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+  font: 8px/1.4 var(--mono);
+  letter-spacing: .12em;
   text-transform: uppercase;
 }
 
-.control-row {
-  display: grid;
-  grid-template-columns: 1fr 86px 34px;
-  gap: 7px;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(236, 233, 223, .14);
+.viewer-meta dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font: 12px/1.3 var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
-.control-row input {
-  width: 100%;
-  accent-color: var(--rust);
+.viewer-meta a { color: var(--rust); text-decoration: none; }
+.viewer-meta a:hover { text-decoration: underline; }
+
+@media (max-width: 860px) {
+  .media-viewer { width: auto; left: 0; border-left: 0; }
 }
+
+.media-bottom { display: none; }
 
 @media (max-width: 1160px) {
   .canvas {
@@ -468,10 +800,12 @@ body {
     column-gap: 16px;
   }
 
+  .media-panel { margin-left: -12px; margin-right: 12px; padding-top: 52px; }
+  .is-looping .media-region { padding-left: 70px; }
   .route-panel { padding-right: 8px; }
   .essay-inner { padding-right: 8px; }
   .story-section p { font-size: 26px; }
-  .ride-status { gap: 8px; font-size: 9px; }
+  .ride-status { gap: 7px; font-size: 8px; }
   .city-label { font-size: 8px; }
 }
 
@@ -497,7 +831,7 @@ body {
 
   .essay-inner {
     max-width: 760px;
-    padding: 12vh 0 4vh;
+    padding: 12vh 0 12px;
   }
 
   .essay h1 { font-size: clamp(48px, 13vw, 78px); }
@@ -505,14 +839,22 @@ body {
   .story-section { padding-bottom: 12vh; }
   .story-section p { font-size: 25px; }
 
-  .media-panel { padding: 0 0 60px; }
-  .media-region { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-
-  .media-controls {
-    right: 15px;
-    left: 15px;
-    width: auto;
+  .media-panel,
+  .media-panel.is-looping {
+    position: static;
+    height: auto;
+    margin: 0;
+    padding: 0 0 60px;
+    overflow: visible;
+    cursor: auto;
+    touch-action: auto;
   }
+
+  .media-column { transform: none !important; }
+  .media-rail,
+  .media-pause { display: none; }
+  .water { display: none; }
+  .media-region { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -522,4 +864,5 @@ body {
   .story-section::before,
   .byline,
   .city-label { transition: none; }
+
 }

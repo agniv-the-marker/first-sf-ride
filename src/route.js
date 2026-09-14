@@ -20,7 +20,7 @@ function eventPoint(event, svg) {
   return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
 }
 
-export function createRoute({ svg, dot, halo, pathData, onProgress, cities, samples, projection, getPoint }) {
+export function createRoute({ svg, dot, marker, pathData, onProgress, cities, samples, projection, getPoint }) {
   svg.setAttribute('viewBox', `0 0 ${projection.width} ${projection.height}`);
   const clip = svg.querySelector('[data-map-clip]');
   clip.setAttribute('width', projection.width);
@@ -35,6 +35,28 @@ export function createRoute({ svg, dot, halo, pathData, onProgress, cities, samp
   if (!Number.isFinite(routeLength) || routeLength === 0) throw new Error('Unable to measure generated GPX route');
   progressLine.setAttribute('pathLength', '1');
 
+  // The marker turns to face the direction of travel, so a ±3-sample window smooths GPS jitter.
+  const indexAtProgress = value => {
+    let low = 0;
+    let high = samples.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (samples[middle].progress < value) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+
+  const headingAt = value => {
+    const last = samples.length - 1;
+    const index = indexAtProgress(value);
+    const from = projectPoint(samples[Math.max(0, index - 3)], projection);
+    const to = projectPoint(samples[Math.min(last, index + 3)], projection);
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    return dx || dy ? Math.atan2(dy, dx) * 180 / Math.PI : 0;
+  };
+
   const labels = document.querySelector('#cityLabels');
   const cityMarkers = [];
   labels.innerHTML = '';
@@ -45,7 +67,7 @@ export function createRoute({ svg, dot, halo, pathData, onProgress, cities, samp
     }, { distance: Infinity, point: samples[0] });
     const position = projectPoint(city, projection);
     const label = document.createElement('span');
-    label.className = `city-label${city.major ? ' major' : ''}`;
+    label.className = `city-label${city.major ? ' major' : ''}${city.stack ? ' stacked' : ''}`;
     label.textContent = city.name;
     label.style.left = `${position.x / projection.width * 100}%`;
     label.style.top = `${position.y / projection.height * 100}%`;
@@ -63,12 +85,11 @@ export function createRoute({ svg, dot, halo, pathData, onProgress, cities, samp
     const position = projectPoint(ridePoint, projection);
     dot.setAttribute('cx', position.x);
     dot.setAttribute('cy', position.y);
-    halo.setAttribute('cx', position.x);
-    halo.setAttribute('cy', position.y);
+    marker.setAttribute('transform', `translate(${position.x.toFixed(3)} ${position.y.toFixed(3)}) rotate(${headingAt(progress).toFixed(1)})`);
     dot.setAttribute('aria-valuenow', Math.round(progress * 100));
     dot.setAttribute('aria-valuetext', `${Math.round(progress * 100)} percent of the ride`);
     progressLine.setAttribute('stroke-dasharray', `${Math.max(0.001, progress)} 1`);
-    cityMarkers.forEach(marker => marker.label.classList.toggle('reached', progress >= marker.progress - 0.015));
+    cityMarkers.forEach(city => city.label.classList.toggle('reached', progress >= city.progress - 0.015));
     onProgress(progress, shouldScroll, ridePoint);
   };
 

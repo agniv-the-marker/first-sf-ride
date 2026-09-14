@@ -1,19 +1,22 @@
-// Capture metadata does not include reliable GPS positions, so this is deliberately easy to edit.
-export const MEDIA_MANIFEST = [
-  { id: 'img-01', src: 'peak-bikeride/peak-bikeride/IMG_6453.JPG', at: 0.04, order: 0, span: 2 },
-  { id: 'img-02', src: 'peak-bikeride/peak-bikeride/IMG_6460.JPG', at: 0.16, order: 1, span: 1 },
-  { id: 'img-03', src: 'peak-bikeride/peak-bikeride/IMG_6477.JPG', at: 0.30, order: 2, span: 1 },
-  { id: 'img-04', src: 'peak-bikeride/peak-bikeride/IMG_6484.JPG', at: 0.45, order: 3, span: 2 },
-  { id: 'img-05', src: 'peak-bikeride/peak-bikeride/IMG_6485.JPG', at: 0.60, order: 4, span: 1 },
-  { id: 'video-01', src: 'peak-bikeride/peak-bikeride/MVI_6467.mp4', poster: 'peak-bikeride/peak-bikeride/IMG_6468.JPG', at: 0.75, order: 5, span: 1, video: true },
-  { id: 'img-07', src: 'peak-bikeride/peak-bikeride/IMG_6482.JPG', at: 0.91, order: 6, span: 2 }
-];
-
+// Non-endpoint labels are snapped to the nearest point on the GPX track, so a dot
+// never floats off the line it is meant to be naming — Montara's town centre sat
+// more than a kilometre inland of the road the ride actually took. Half Moon Bay
+// Half Moon Bay is the exception: a hand-picked point in the town itself
+// (37°28'07.0"N 122°25'58.6"W), just inland of the highway the ride took.
 export const CITY_LABELS = [
   { name: 'stanford', lat: 37.406132, lon: -122.126204, major: true, anchor: 'left' },
-  { name: 'woodside', lat: 37.4292, lon: -122.2539, anchor: 'right' },
-  { name: 'half moon bay', lat: 37.4636, lon: -122.4286, anchor: 'left' },
-  { name: 'montara', lat: 37.5429, lon: -122.5161, anchor: 'left' },
-  { name: 'pacifica', lat: 37.6138, lon: -122.4869, anchor: 'right' },
+  { name: 'woodside', lat: 37.429352, lon: -122.253792, anchor: 'right' },
+  { name: 'kings mountain road', lat: 37.427306, lon: -122.305141, anchor: 'right', stack: true },
+  { name: 'tunitas creek', lat: 37.395722, lon: -122.365583, anchor: 'right' },
+  { name: 'half moon bay', lat: 37.468611, lon: -122.432944, anchor: 'right' },
+  { name: 'montara', lat: 37.549803, lon: -122.508032, anchor: 'right' },
+  { name: 'devils slide', lat: 37.569161, lon: -122.514987, anchor: 'right' },
+  { name: 'pacifica', lat: 37.613971, lon: -122.487232, anchor: 'right' },
+  { name: 'daly city', lat: 37.687885, lon: -122.470050, anchor: 'right' },
   { name: 'san francisco', lat: 37.782112, lon: -122.393594, major: true, anchor: 'right' }
 ];
+
+
+// When true the drifting column only shows frames whose capture time is known, so
+// the clock rail beside it actually lines up with what you are looking at.
+export const HIDE_UNDATED_MEDIA = true;
