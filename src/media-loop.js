@@ -6,8 +6,9 @@ const RESUME_RAMP_MS = 1200;
 const FRICTION = 0.93;       // per 1/60s
 const MAX_V = 2600;
 
+import { phone } from './breakpoints.js';
+
 export function createMediaLoop({ panel, columns, rail = null, onMeasure = null, onTap = null, startStopped = false, speed = DRIFT, hijackWheel = true }) {
-  const desktop = matchMedia('(min-width: 861px)');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const state = [...columns, ...(rail ? [rail] : [])].map(el => ({ el, period: 1, offset: 0, rail: el === rail }));
 
@@ -179,8 +180,8 @@ export function createMediaLoop({ panel, columns, rail = null, onMeasure = null,
     });
   };
 
-  const sync = () => (desktop.matches ? enable() : disable());
-  desktop.addEventListener('change', sync);
+  const sync = () => (phone.matches ? disable() : enable());
+  phone.addEventListener('change', sync);
 
   // Hold still while the inline editor is open.
   new MutationObserver(() => { paused = document.body.classList.contains('editing'); })

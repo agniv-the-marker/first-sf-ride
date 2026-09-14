@@ -4,16 +4,21 @@ const path = require('path');
 
 const mediaDir = path.join(__dirname, '..', 'peak-bikeride', 'peak-bikeride');
 
-// Whether a clip actually carries a sound track. The originals are AVIs with a
-// PCM track; an earlier conversion to mp4 dropped it, and the manifest asserted
-// `audio: false` for everything, which silently hid the unmute button.
-function hasAudio(file) {
+// Whether a clip carries a sound track, and how big its picture is. The originals
+// are AVIs with a PCM track; an earlier conversion to mp4 dropped it, and the
+// manifest asserted `audio: false` for everything, which silently hid the unmute
+// button. The size lets the page cap a tall clip by its aspect so it can sit fully
+// in frame — which is what the autoplay rule requires.
+function probeVideo(file) {
   try {
-    const out = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a',
+    const audio = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a',
       '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', file], { encoding: 'utf8' });
-    return out.trim().length > 0;
+    const size = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file], { encoding: 'utf8' });
+    const [w, h] = size.trim().split('x').map(Number);
+    return { audio: audio.trim().length > 0, ...(w && h ? { w, h } : {}) };
   } catch {
-    return null; // no ffprobe here: let the player decide
+    return { audio: null }; // no ffprobe here: let the player decide
   }
 }
 
@@ -97,9 +102,10 @@ const items = sequence.map((name, order) => ({
   filename: name,
   src: `peak-bikeride/peak-bikeride/${name}`,
   type: name.endsWith('.mp4') ? 'video' : 'image',
-  audio: name.endsWith('.mp4') ? hasAudio(path.join(mediaDir, name)) : undefined,
   time: name.endsWith('.mp4') ? null : readCaptureTime(path.join(mediaDir, name)),
-  ...(name.endsWith('.mp4') ? {} : readDimensions(path.join(mediaDir, name)) || {}),
+  ...(name.endsWith('.mp4')
+    ? probeVideo(path.join(mediaDir, name))
+    : { audio: undefined, ...(readDimensions(path.join(mediaDir, name)) || {}) }),
   at: files.length === 1 ? 0 : order / (files.length - 1),
   order,
   span: order % 9 === 0 ? 2 : 1

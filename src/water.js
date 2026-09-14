@@ -216,11 +216,22 @@ function render(strip, ink, accent) {
   strip.ctx.putImageData(img, 0, 0);
 }
 
+const cssRGB = channels => `rgb(${Math.round(channels[0])} ${Math.round(channels[1])} ${Math.round(channels[2])})`;
+
+// The exact ink the canvas prints with, so other chrome can borrow the water's
+// colour rather than approximating it from the type palette.
+export function waterColorAt(hour) {
+  const { ink, accent } = colorsAt(hour);
+  return { ink: cssRGB(ink), accent: cssRGB(accent) };
+}
+
 export function createWater({ host = '.route-stage', svg, projection } = {}) {
   const stage = typeof host === 'string' ? document.querySelector(host) : host;
   const map = typeof svg === 'string' ? document.querySelector(svg) : svg;
   if (!stage || !map || !projection) return { refresh: () => {}, destroy: () => {} };
-  const desktop = matchMedia('(min-width: 861px)');
+  // Whether this page wants water at all right now. The owner decides: everywhere
+  // on a wide screen, and on a phone only while the full-screen map is open.
+  let allowed = true;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
   const canvas = document.createElement('canvas');
@@ -390,7 +401,7 @@ export function createWater({ host = '.route-stage', svg, projection } = {}) {
   const onResize = () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (!desktop.matches) return;
+      if (!allowed) return;
       if (running) layout();
       else if (reduced.matches) still();
     }, 160);
@@ -421,13 +432,12 @@ export function createWater({ host = '.route-stage', svg, projection } = {}) {
   };
 
   const sync = () => {
-    if (!desktop.matches) { stop(); canvas.hidden = true; return; }
+    if (!allowed) { stop(); canvas.hidden = true; return; }
     // Reduced motion keeps the texture and loses the motion: one static print.
     if (reduced.matches) { stop(); still(); }
     else start();
   };
 
-  desktop.addEventListener('change', sync);
   reduced.addEventListener('change', sync);
   addEventListener('resize', onResize, { passive: true });
   document.addEventListener('visibilitychange', () => {
@@ -440,10 +450,11 @@ export function createWater({ host = '.route-stage', svg, projection } = {}) {
 
   sync();
   // The stage only reaches its final height once the layout settles.
-  setTimeout(() => { if (running) layout(); else if (desktop.matches && reduced.matches) still(); }, 700);
+  setTimeout(() => { if (running) layout(); else if (allowed && reduced.matches) still(); }, 700);
 
   return {
     refresh: layout,
+    setActive: value => { if (value === allowed) return; allowed = value; sync(); },
     // Fractional hour in the ride's own timezone, so the colour slides rather than
     // steps and dusk lands when it actually did.
     setHour: hour => {

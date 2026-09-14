@@ -20,7 +20,7 @@ function eventPoint(event, svg) {
   return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
 }
 
-export function createRoute({ svg, dot, marker, pathData, onProgress, cities, samples, projection, getPoint }) {
+export function createRoute({ svg, dot, marker, pathData, onProgress, cities, samples, projection, getPoint, canScrub = () => true }) {
   svg.setAttribute('viewBox', `0 0 ${projection.width} ${projection.height}`);
   const clip = svg.querySelector('[data-map-clip]');
   clip.setAttribute('width', projection.width);
@@ -105,16 +105,24 @@ export function createRoute({ svg, dot, marker, pathData, onProgress, cities, sa
     return best.progress;
   };
 
+  // Dragging the marker is a desktop affordance. On a phone the map is a
+  // full-screen overlay you tapped into, and scrubbing it there reads as the page
+  // jumping around under you — so the owner can switch it off.
   svg.addEventListener('pointerdown', event => {
+    if (!canScrub()) return;
     dragging = true;
-    svg.setPointerCapture(event.pointerId);
+    // Capture keeps a drag alive past the edge of the svg, but it throws for a
+    // pointer the browser no longer considers active — and an uncaught throw here
+    // would take the scrub with it.
+    try { svg.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
     set(closest(event), true);
   });
-  svg.addEventListener('pointermove', event => { if (dragging) set(closest(event), true); });
+  svg.addEventListener('pointermove', event => { if (dragging && canScrub()) set(closest(event), true); });
   const endDrag = () => { dragging = false; };
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
   dot.addEventListener('keydown', event => {
+    if (!canScrub()) return;
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     const delta = event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -0.01 : 0.01;

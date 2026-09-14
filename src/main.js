@@ -3,8 +3,9 @@ import { formatDistance, formatElevation, formatTime, pointAtDistance, pointAtPr
 import { createRoute } from './route.js';
 import { createMediaController } from './media.js';
 import { createMediaLoop } from './media-loop.js';
-import { createWater } from './water.js';
+import { createWater, waterColorAt } from './water.js';
 import { accentsAt } from './palette.js';
+import { phone } from './breakpoints.js';
 import { ROUTE_DATA } from './route-data.js';
 import { MEDIA_DATA } from './media-data.js';
 
@@ -28,6 +29,7 @@ function makeCard(item) {
   card.dataset.mediaId = item.id;
   if (item.time) card.dataset.time = item.time;
   if (item.rotate) card.style.setProperty('--media-rotation', `${item.rotate}deg`);
+  if (item.w && item.h) card.style.setProperty('--media-aspect', (item.w / item.h).toFixed(4));
   if (item.type === 'video') {
     card.innerHTML = `<video muted loop playsinline preload="metadata"><source src="${item.src}" type="video/mp4"></video><div class="video-controls"><button class="video-pause-toggle" type="button" aria-label="Pause video" aria-pressed="false">pause</button>${item.audio === false ? '' : '<button class="video-audio-toggle" type="button" aria-label="Unmute video" aria-pressed="false">unmute</button>'}</div>`;
   } else {
@@ -35,7 +37,8 @@ function makeCard(item) {
     if (item.time) card.dataset.time = item.time;
     card.dataset.photo = item.id;
     const size = item.w && item.h ? ` width="${item.w}" height="${item.h}"` : '';
-    card.innerHTML = `<img src="${item.src}"${size} alt="${item.filename || 'Ride photograph'}" loading="lazy">`;
+    const caption = item.caption ? `<figcaption class="media-caption">${item.caption}</figcaption>` : '';
+    card.innerHTML = `<img src="${item.src}"${size} alt="${item.filename || 'Ride photograph'}" loading="lazy">${caption}`;
   }
   return card;
 }
@@ -61,6 +64,18 @@ async function start() {
     opener.append(cap, raw.slice(index + 1));
   }
   addEssayFooter();
+
+  // Phone: the map is a full-screen overlay reached from a bar under the byline,
+  // which doubles as a progress meter for the ride. Desktop never sees it.
+  const mapSlot = document.createElement('div');
+  mapSlot.className = 'map-open-slot';
+  const mapButton = document.createElement('button');
+  mapButton.type = 'button';
+  mapButton.className = 'map-open';
+  mapButton.setAttribute('aria-expanded', 'false');
+  mapButton.innerHTML = '<span class="map-open-fill" aria-hidden="true"></span><span class="map-open-label">view map</span>';
+  mapSlot.append(mapButton);
+  document.querySelector('.byline').after(mapSlot);
   const routeStage = document.querySelector('.route-stage');
   const stageBounds = routeStage.getBoundingClientRect();
   const mapHeight = Math.max(105, Math.min(220, 100 * stageBounds.height / Math.max(1, stageBounds.width)));
@@ -79,18 +94,21 @@ async function start() {
     samples,
     projection,
     getPoint: progress => pointAtProgress(measured, progress),
+    canScrub: () => !phone.matches,
     onProgress: (progress, shouldScroll, point) => {
       ridePercent.textContent = `${Math.round(progress * 100).toString().padStart(2, '0')}%`;
       rideDistance.textContent = formatDistance(measured.totalKm * progress);
       rideGain.textContent = formatElevation(point?.gainM);
       const miles = measured.totalKm * progress * 0.621371;
       railMarks.forEach(mark => mark.classList.toggle('is-current', Math.abs(Number(mark.dataset.mile) - miles) <= MARK_STEP_MI / 2));
+      mapButton.style.setProperty('--map-progress', progress.toFixed(4));
       const hour = rideHour(point?.time);
       water.setHour(hour);
       if (hour !== null) {
         const accents = accentsAt(hour);
         root.style.setProperty('--rust', accents.warm);
         root.style.setProperty('--teal', accents.cool);
+        mapButton.style.setProperty('--map-water', waterColorAt(hour).ink);
       }
       rideTime.textContent = formatTime(point?.time);
       media.setProgress(progress);
@@ -101,15 +119,29 @@ async function start() {
     }
   });
   let scrollFrame = 0;
+  // `position: sticky` cannot work here: body is a scroll container because of
+  // overflow-x, so a sticky child sticks to a scrollport that never scrolls.
+  const syncPin = () => {
+    if (!phone.matches) return;
+    // Pin to the slot's own measured box rather than to the viewport, so detaching
+    // changes only where the bar is — never how wide it is.
+    const box = mapSlot.getBoundingClientRect();
+    mapButton.style.setProperty('--map-left', `${Math.round(box.left)}px`);
+    mapButton.style.setProperty('--map-width', `${Math.round(box.width)}px`);
+    mapButton.classList.toggle('is-pinned', box.top <= 12);
+  };
   const syncRouteToScroll = () => {
     scrollFrame = 0;
     const maxScroll = Math.max(1, document.documentElement.scrollHeight - innerHeight);
     route.setProgress(scrollY / maxScroll);
+    syncPin();
   };
   const scheduleScrollSync = () => {
     if (!scrollFrame) scrollFrame = requestAnimationFrame(syncRouteToScroll);
   };
-  addEventListener('scroll', scheduleScrollSync, { passive: true });
+  // Pinning is a class toggle off one rect: cheap enough to do on the scroll event
+  // itself, so the bar never lags a frame behind the reader.
+  addEventListener('scroll', () => { syncPin(); scheduleScrollSync(); }, { passive: true });
   addEventListener('resize', scheduleScrollSync, { passive: true });
   addEventListener('pageshow', scheduleScrollSync, { passive: true });
   syncRouteToScroll();
@@ -145,7 +177,7 @@ async function start() {
         const ratio = Number(card.dataset.ratio) || 1.25;
         const index = heights.indexOf(Math.min(...heights));
         columns[index].firstElementChild.append(card);
-        heights[index] += columnWidth / ratio + columnWidth * 0.05;
+        heights[index] += columnWidth / ratio + columnWidth * 0.05 + (phone.matches && card.querySelector('.media-caption') ? 18 : 0);
       });
       onLayout?.();
     };
@@ -160,13 +192,32 @@ async function start() {
   // The manifest's own order is filename order. Left alone it becomes the flex
   // `order` on every card and undoes the chronological order the captions rely on.
   photos.forEach((item, index) => { item.order = index; });
+  // A caption per frame, shown only on a phone — there the rail beside the column
+  // is gone, so the annotation travels with the photograph instead.
+  photos.forEach(item => {
+    const clock = formatTime(item.time);
+    if (clock === '--:--') return;
+    const state = stateAtTime(measured, item.time);
+    if (!state) { item.caption = clock; return; }
+    if (state.before) { item.caption = `${clock} · before the ride`; return; }
+    if (state.after) { item.caption = `${clock} · after the ride`; return; }
+    const near = CITY_LABELS
+      .map(city => ({ city, distance: Math.hypot(city.lat - state.lat, city.lon - state.lon) }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    item.caption = near && near.distance < 0.012
+      ? `${clock} · ${near.city.name}`
+      : `${clock} · ${(state.distanceKm * 0.621371).toFixed(1)} mi`;
+  });
   const videos = mediaManifest.filter(item => item.type === 'video');
   mediaBottom.innerHTML = '';
   mediaBottom.hidden = true;
-  const { cards: photoCards, columns: photoColumns, rebalance: rebalancePhotos } = makeColumnSet(mediaRegion, photos, 3, () => mediaLoop?.refresh());
+  const columnsFor = () => (phone.matches ? 2 : 3);
+  let columnCount = columnsFor();
+  let photoSet = makeColumnSet(mediaRegion, photos, columnCount, () => mediaLoop?.refresh());
+  const photoCards = photoSet.cards;
   const videoCards = [];
   videos.forEach((item, index) => { const card = makeCard(item); videoCards.push(card); sections[Math.min(sections.length - 1, Math.floor(index * sections.length / videos.length))].append(card); });
-  media = createMediaController({ cards: [...photoCards, ...videoCards], manifest: mediaManifest });
+  media = createMediaController({ cards: [...photoSet.cards, ...videoCards], manifest: mediaManifest });
   const mediaPanel = document.querySelector('.media-panel');
   // A fixed scale down the left of the column: one mark every five miles, all of
   // them on screen at once. Where the ride passes within about a kilometre of a
@@ -289,6 +340,7 @@ async function start() {
   const openViewer = id => {
     const item = photoById.get(id);
     if (!item) return;
+    closeMap();
     const wasOpen = viewer.classList.contains('is-open');
     // Re-tapping the frame already on screen is a no-op; re-tapping it after a
     // close has to reopen it, so this is gated on being open, not on the src.
@@ -329,16 +381,66 @@ async function start() {
     return rows.map(([term, value]) => `<div><dt>${term}</dt><dd>${value}</dd></div>`).join('');
   };
 
+  // The map overlay. On a phone .route-panel is permanently fixed and full-screen,
+  // hidden by visibility rather than display — display:none would zero the water
+  // canvas's box and every ripple would land in the wrong cell.
+  const routeClose = document.createElement('button');
+  routeClose.type = 'button';
+  routeClose.className = 'route-close';
+  routeClose.textContent = 'close';
+  routeClose.setAttribute('aria-label', 'Close the map');
+  const routePanel = routeStage.parentElement;
+  routePanel.prepend(routeClose);
+
+  const syncWater = () => water.setActive(!phone.matches || document.body.classList.contains('is-mapping'));
+  const syncScrub = () => {
+    const dot = document.querySelector('[data-route-dot]');
+    if (!dot) return;
+    dot.setAttribute('tabindex', phone.matches ? '-1' : '0');
+    dot.setAttribute('aria-disabled', String(phone.matches));
+  };
+
+  const closeMap = () => {
+    if (!document.body.classList.contains('is-mapping')) return;
+    document.body.classList.remove('is-mapping');
+    mapButton.setAttribute('aria-expanded', 'false');
+    syncWater();
+  };
+  const openMap = () => {
+    if (!phone.matches || document.body.classList.contains('is-mapping')) return;
+    closeViewer();
+    document.body.classList.add('is-mapping');
+    mapButton.setAttribute('aria-expanded', 'true');
+    syncWater();
+    routeClose.focus({ preventScroll: true });
+  };
+  mapButton.addEventListener('click', openMap);
+  routeClose.addEventListener('click', closeMap);
+  // The overlay covers the viewport, so swallowing these here holds the page still
+  // without touching `overflow` — which would move scrollY, and scrollY is the
+  // input to the whole progress and scrub system.
+  const holdStill = event => { if (document.body.classList.contains('is-mapping')) event.preventDefault(); };
+  routePanel.addEventListener('wheel', holdStill, { passive: false });
+  routePanel.addEventListener('touchmove', holdStill, { passive: false });
+  // The panel opens with a 10px lift, so the canvas box is still moving when water
+  // starts. Re-measure once it has settled or every hit test is 10px out.
+  routePanel.addEventListener('transitionend', event => {
+    if (event.propertyName === 'transform' && document.body.classList.contains('is-mapping')) water.refresh();
+  });
+
   viewer.querySelector('.viewer-close').addEventListener('click', closeViewer);
-  addEventListener('keydown', event => { if (event.key === 'Escape') closeViewer(); });
+  addEventListener('keydown', event => { if (event.key === 'Escape') { closeViewer(); closeMap(); } });
   addEventListener('pointerdown', event => {
     if (!viewer.classList.contains('is-open') || viewer.contains(event.target) || mediaPanel.contains(event.target)) return;
     closeViewer();
   }, true);
 
-  mediaLoop = createMediaLoop({
+  // The drifting loop is a desktop device: it needs `touch-action: none` on the
+  // panel, which on a touch screen fights the reader's own scrolling, and the
+  // clock rail that gives the drift its meaning is hidden on a phone anyway.
+  const buildLoop = () => (phone.matches ? null : createMediaLoop({
     panel: mediaPanel,
-    columns: photoColumns,
+    columns: photoSet.columns,
     rail: railTrack,
     onMeasure: placeMarks,
     startStopped: true,
@@ -346,7 +448,9 @@ async function start() {
       const card = document.elementFromPoint(x, y)?.closest('[data-photo]');
       if (card) openViewer(card.dataset.photo);
     }
-  });
+  }));
+  mediaLoop = buildLoop();
+
   const pauseButton = document.createElement('button');
   pauseButton.type = 'button';
   pauseButton.className = 'media-pause';
@@ -355,9 +459,38 @@ async function start() {
     pauseButton.setAttribute('aria-pressed', String(stopped));
     pauseButton.setAttribute('aria-label', stopped ? 'Start the photo column drifting' : 'Pause the drifting photo column');
   };
-  pauseButton.addEventListener('click', () => labelPause(mediaLoop.toggleStopped()));
+  pauseButton.addEventListener('click', () => { if (mediaLoop) labelPause(mediaLoop.toggleStopped()); });
   mediaPanel.append(pauseButton);
-  labelPause(mediaLoop.isStopped());
+  labelPause(mediaLoop ? mediaLoop.isStopped() : true);
+
+  // With no loop on a phone there is no pointer handler to resolve a tap, so the
+  // grid needs its own — gated, so the desktop capture path is untouched.
+  mediaRegion.addEventListener('click', event => {
+    if (!phone.matches) return;
+    const card = event.target.closest('[data-photo]');
+    if (card) openViewer(card.dataset.photo);
+  });
+
+  // Crossing the breakpoint changes the column count, so the grid is rebuilt.
+  phone.addEventListener('change', () => {
+    const next = columnsFor();
+    if (next !== columnCount) {
+      columnCount = next;
+      mediaLoop?.destroy();
+      mediaLoop = null;
+      mediaRegion.innerHTML = '';
+      photoSet = makeColumnSet(mediaRegion, photos, columnCount, () => mediaLoop?.refresh());
+      mediaLoop = buildLoop();
+      labelPause(mediaLoop ? mediaLoop.isStopped() : true);
+    }
+    syncScrub();
+    syncWater();
+    syncPin();
+  });
+
+  syncScrub();
+  syncWater();
+  syncPin();
   syncRouteToScroll();
 }
 
