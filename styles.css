@@ -922,7 +922,16 @@ body.is-viewing .media-pause {
     font: 11px/1 var(--mono);
     letter-spacing: .14em;
     text-transform: lowercase;
+    /* pan-y, not none: a horizontal drag is ours to scrub with, a vertical one is
+       still the browser's to scroll the page with. */
+    touch-action: pan-y;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .map-open.is-scrubbing { cursor: grabbing; }
+
+  .map-open.is-scrubbing .map-open-fill {
+    background: color-mix(in srgb, var(--map-water, var(--teal)) 52%, transparent);
   }
 
   /* Pinning changes where it is, never how big it is: the same inset as the page

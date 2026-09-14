@@ -414,14 +414,71 @@ async function start() {
     syncWater();
     routeClose.focus({ preventScroll: true });
   };
-  mapButton.addEventListener('click', openMap);
+  // The bar is also the scrubber: drag it sideways to move through the ride, tap it
+  // to open the map. A drag has to travel further horizontally than vertically
+  // before it counts, so a vertical swipe that happens to start on the bar still
+  // scrolls the page (which is why touch-action is pan-y rather than none).
+  const SCRUB_SLOP = 6;
+  let scrubPointer = null;
+  let scrubStartX = 0;
+  let scrubStartY = 0;
+  let scrubbed = false;
+
+  const scrubTo = clientX => {
+    const box = mapButton.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (clientX - box.left) / Math.max(1, box.width)));
+    const maxScroll = Math.max(1, document.documentElement.scrollHeight - innerHeight);
+    scrollTo({ top: maxScroll * fraction, behavior: 'auto' });
+  };
+
+  mapButton.addEventListener('pointerdown', event => {
+    scrubPointer = event.pointerId;
+    scrubStartX = event.clientX;
+    scrubStartY = event.clientY;
+    scrubbed = false;
+    try { mapButton.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
+  });
+
+  mapButton.addEventListener('pointermove', event => {
+    if (scrubPointer !== event.pointerId) return;
+    const dx = event.clientX - scrubStartX;
+    const dy = event.clientY - scrubStartY;
+    if (!scrubbed && (Math.abs(dx) < SCRUB_SLOP || Math.abs(dx) <= Math.abs(dy))) return;
+    scrubbed = true;
+    mapButton.classList.add('is-scrubbing');
+    scrubTo(event.clientX);
+  });
+
+  const endScrub = event => {
+    if (scrubPointer !== event.pointerId) return;
+    scrubPointer = null;
+    mapButton.classList.remove('is-scrubbing');
+  };
+  mapButton.addEventListener('pointerup', endScrub);
+  mapButton.addEventListener('pointercancel', event => { scrubbed = true; endScrub(event); });
+
+  // Keyboard activation arrives as a click with no pointer sequence, so it opens
+  // the map exactly as a tap does.
+  mapButton.addEventListener('click', () => {
+    if (scrubbed) { scrubbed = false; return; }
+    openMap();
+  });
   routeClose.addEventListener('click', closeMap);
-  // The overlay covers the viewport, so swallowing these here holds the page still
+  // Both overlays cover the viewport, so swallowing these here holds the page still
   // without touching `overflow` — which would move scrollY, and scrollY is the
   // input to the whole progress and scrub system.
-  const holdStill = event => { if (document.body.classList.contains('is-mapping')) event.preventDefault(); };
-  routePanel.addEventListener('wheel', holdStill, { passive: false });
-  routePanel.addEventListener('touchmove', holdStill, { passive: false });
+  const holdPageStill = (element, whileClass, phoneOnly = false) => {
+    const stop = event => {
+      if (phoneOnly && !phone.matches) return;
+      if (document.body.classList.contains(whileClass)) event.preventDefault();
+    };
+    element.addEventListener('wheel', stop, { passive: false });
+    element.addEventListener('touchmove', stop, { passive: false });
+  };
+  holdPageStill(routePanel, 'is-mapping');
+  // On a wide screen the viewer is a side panel, not a takeover — the page should
+  // still scroll under a cursor that happens to be over it.
+  holdPageStill(viewer, 'is-viewing', true);
   // The panel opens with a 10px lift, so the canvas box is still moving when water
   // starts. Re-measure once it has settled or every hit test is 10px out.
   routePanel.addEventListener('transitionend', event => {
